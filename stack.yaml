@@ -1,0 +1,524 @@
+# Nome Stack: !!!stackName!!!
+# Data revisão: 28/07/2019
+#
+# P: Qual o nome da stack de QA?
+# R: fusionqa
+#
+# P: Porque o nome do fusion.qa.api.assets é assim?
+# R: Em função da ordem alfabetica, todos os assets listados de fusion.qa ficaram agrupados na visualização.
+#
+# P: Quais as labels necessarias para rodar os placements?
+# R: Todas listadas abaixo.
+#
+#!!!labels!!!
+#
+# P: Quais devem ser os nomes dos ECRs?
+# R: fusionsite, fusionapi, fusionwebhook, fusionschedule
+#
+# P: Quais devem ser as tags dos serviços?
+# R: Em QA, devem ser: master-latest. Em produção, devem ser: producao-latest.
+#    Alem das builds especificas, utilizadas pelo sistema para auto-determinar a versão.
+#
+# P: Você esqueceu de colocar o Schedule com replicas?
+# R: Não. Ele é um serviço que ainda não está preparado para possuir replicas.
+#
+# P: A configuração do mongodb para cluster é automática?
+# R: Não. Após subir as instancias, é preciso realizar um comando manualmente
+#    (somente na primeira vez) em cada uma delas para ativar o replicaSet
+#
+# P: Cada instancia de mongo agora tem um nome diferente, é isto mesmo?
+# R: Sim, cada instancia precisa ter seu próprio DNS para que o replicaSet funcione.
+#
+# P: Como os softwares irão encontrar a base de dados correta do mongo se agora tem
+#    4 nomes diferentes de DNS?
+# R: A configuração da string de conexão, trata isto.
+#
+# P: Posso usar a função scale para carregar mais nós do mongodb?
+# R: Não. Como já foi dito, o cluster precisa de configurações manuais. Além disto
+#    os discos (volumes de dados) não são os mesmos para 2 instâncias (visto que só
+#    uma seria capaz de alocar o volume).
+#
+# P: Se isto é verdade, porque a API pode ter replicas?
+# R: Porque ela não usa EBS como FS, e sim S3FS.
+#
+# P: Porque não usamos S3FS em todos então?
+# R: Cada tipo de FS tem um proposito diferente. S3FS não é para banco de dados.
+#
+# P: O cluster do redis é diferente?
+# R: Sim, ele precisa de um arquivo de configuração para funcionar.
+#
+# P: Como o docker vai saber para quem mandar a requisição?
+# R: Ele não vai, porque não importa para quem ele envie (das instancias de um mesmo serviço).
+#    a resposta sempre será a mesma. Daí estar em cluster.
+#
+# P: Preciso mesmo da configuração do cluster? Para que serve isto?
+# R: Imagine que um dos servidores vai sofrer um boot. É natural e necessário,
+#    que os serviços permanecam ativos. Se o serviço que irá sofrer o boot for
+#    por exemplo o do mongo, até que o serviço migre para outro servidor, todos os
+#    serviços irão parar de responder.
+#
+#    Em cluster, isto não acontece. Outro servidor irá responder a demanda, até que
+#    o serviço antigo recupere.
+#
+# P: Eu dei um boot num servidor, e após isto, ficaram 2 (instâncias de um serviço)
+#    no mesmo servidor. Algo deu errado?
+# R: Não, nada deu errado. Pois o placement é uma preferencia. Se dizemos que tem que
+#    haver 4 instância ativas, e um dos servidores cai, o serviço irá subir (duplicado)
+#    em um dos outros servidores.
+#
+# P: E depois que o servidor voltar (visto que precisamos ter um quorum mínimo de 3 servidores)
+#    e eu der um boot em outro, não corre o risco de parar tudo?
+# R: Não. Porque temos 2 outros servidores rodando em cluster. Com o serviço. Além disto,
+#    o servidor antigo (que estava no primeiro boot) já voltou ao ar. Automaticamente, ele
+#    vai receber uma instância dos serviços.
+#
+# P: Se eu cometer um erro numa query, posso utilizar os outros servidores para recuperar?
+# R: Não. Afinal, o principio do cluster é a replicação instantânea. Se algo ter errado em
+#    um deles (na parte de dados em função de uma query), todos serão afetados.
+#
+# P: Ao subir mais instâncias, não vai aumentar o peso sobre os servidores?
+# R: Mesmo que o volume de requisições seja o mesmo, sim, vai aumentar o peso em todos
+#    os servidores. Uma vez que mais serviços estão rodando.
+#
+
+version: '3.7'
+
+services:
+  site:
+    image: 206031302834.dkr.ecr.us-east-1.amazonaws.com/fusionsite:master-latest
+    networks:
+      - proxy
+    deploy:
+      mode: replicated
+      replicas: 4
+      labels:
+        - "traefik.frontend.whiteList.useXForwardedFor=true"
+        - "traefik.backend=!!!stackName!!!_site"
+        - "traefik.docker.network=proxy"
+        - "traefik.frontend.rule=HostRegexp:!!!site.traefik.url!!!, {subdomain:[a-zA-Z0-9-]+}.!!!site.traefik.url!!!"
+        - "traefik.frontend.priority=5"
+        - "traefik.port=80"
+      placement:
+        preferences:
+          - spread: node.labels.!!!stackName!!!Site
+
+  api:
+    image: 206031302834.dkr.ecr.us-east-1.amazonaws.com/fusionapi:master-latest
+    networks:
+      - proxy
+      - database
+    environment:
+      JWT_SECRETKEY: "!!!api.jwt!!!"
+      MONGO_URL: "mongodb://!!!mongo.user!!!:!!!mongo.password!!!@mongodb/!!!mongo.database!!!?authSource=admin"
+      REDIS_PASSWORD: "!!!redis.password!!!"
+      REDIS_CLUSTER: "!!!redisCluster!!!"
+      PORT: "4000"
+      URL_BASE: "http://api.!!!site.traefik.url!!!"
+      POSTGRES_DB: "!!!postgres.database!!!"
+      POSTGRES_USERNAME: "!!!postgres.username!!!"
+      POSTGRES_PASSWORD: "!!!postgres.password!!!"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: 5432
+      URL_SITE: "http://!!!site.traefik.url!!!"
+      SMTP_USER: "!!!smtp.user!!!"
+      SMTP_PASSWORD: "!!!smtp.password!!!"
+      SMTP_HOST: "!!!smtp.host!!!"
+      SMTP_PORT: "##!!!smtp.port!!!##"
+    volumes:
+      - api_assets:/app/assets
+    deploy:
+      mode: replicated
+      replicas: 4
+      labels:
+        - "traefik.frontend.whiteList.useXForwardedFor=true"
+        - "traefik.backend=!!!stackName!!!_api"
+        - "traefik.docker.network=proxy"
+        - "traefik.frontend.rule=Host:api.!!!site.traefik.url!!!"
+        - "traefik.port=4000"
+      placement:
+        preferences:
+          - spread: node.labels.!!!stackName!!!API
+
+  webhooks:
+    image: 206031302834.dkr.ecr.us-east-1.amazonaws.com/fusionwebhook:master-latest
+    environment:
+      JWT_SECRETKEY: "!!!api.jwt!!!"
+      MONGO_URL: "mongodb://!!!mongo.user!!!:!!!mongo.password!!!@mongodb/!!!mongo.database!!!?authSource=admin"
+      REDIS_PASSWORD: "!!!redis.password!!!"
+      REDIS_CLUSTER: "!!!redisCluster!!!"
+      ENVIRONMENT: "qa"
+    networks:
+      - proxy
+      - database
+    deploy:
+      mode: replicated
+      replicas: 4
+      labels:
+        - "traefik.backend=!!!stackName!!!_webhook"
+        - "traefik.docker.network=proxy"
+        - "traefik.frontend.rule=Host:webhook.!!!site.traefik.url!!!"
+        - "traefik.port=7777"
+      placement:
+        preferences:
+          - spread: node.labels.!!!stackName!!!WebHooks
+
+  schedule:
+    image: 206031302834.dkr.ecr.us-east-1.amazonaws.com/fusionschedule:master-latest
+    environment:
+      JWT_SECRETKEY: "!!!api.jwt!!!"
+      MONGO_URL: "mongodb://!!!mongo.user!!!:!!!mongo.password!!!@mongodb/!!!mongo.database!!!?authSource=admin"
+      REDIS_PASSWORD: "!!!redis.password!!!"
+      REDIS_CLUSTER: "!!!redisCluster!!!"
+      ENVIRONMENT: "qa"
+    networks:
+      - database
+
+
+  #
+  # Definições deconfiguração  do cluster do MongoDB
+  #
+  mongodb1:
+    image: mongo:4.1.13
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD: "aeng4rahruGoh6yoh2ohcielieNgiZei"
+      MONGO_INITDB_DATABASE: "core"
+    volumes:
+      - mongo_data1:/data/db
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionMongoQA
+
+  mongodb2:
+    image: mongo:4.1.13
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD: "aeng4rahruGoh6yoh2ohcielieNgiZei"
+      MONGO_INITDB_DATABASE: "core"
+    volumes:
+      - mongo_data2:/data/db
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionMongoQA
+
+  mongodb3:
+    image: mongo:4.1.13
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD: "aeng4rahruGoh6yoh2ohcielieNgiZei"
+      MONGO_INITDB_DATABASE: "core"
+    volumes:
+      - mongo_data3:/data/db
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionMongoQA
+
+  mongodb4:
+    image: mongo:4.1.13
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD: "aeng4rahruGoh6yoh2ohcielieNgiZei"
+      MONGO_INITDB_DATABASE: "core"
+    volumes:
+      - mongo_data4:/data/db
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionMongoQA
+
+
+  #
+  # Configurações do cluster do postgres
+  #
+  postgres:
+    image: postgres:11.4
+    environment:
+      POSTGRES_HOST: "postgres"
+      POSTGRES_USER: "postgres"
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: "usign"
+      POSTGRES_PASSWORD: "ur8ea6Aigh6AhChai8iebich1waengio"
+      PGPASSWORD: "ur8ea6Aigh6AhChai8iebich1waengio"
+    networks:
+      - database
+    healthcheck:
+      test: "pg_isready -h localhost -p 5432 -q -U postgres"
+      interval: 3s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - postgres_data1:/var/lib/postgresql/data
+
+  #
+  # Configurações do cluster do REDIS
+  #
+  redis1:
+    image: redis:latest
+    command: redis-server /redis.conf
+    configs:
+      - source: redis1
+        target: /redis.conf
+        mode: 644
+    volumes:
+      - redis_data1:/data
+    ports:
+      - 8001:8001
+      - 18001:18001
+    environment:
+      ALLOW_EMPTY_PASSWORD: 'no'
+      REDIS_EXTRA_FLAGS: '--maxmemory 500mb'
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionRedisQA-inst1
+
+  redis2:
+    image: redis:latest
+    command: redis-server /redis.conf
+    configs:
+      - source: redis2
+        target: /redis.conf
+        mode: 644
+    volumes:
+      - redis_data2:/data
+    ports:
+      - 8002:8002
+      - 18002:18002
+    environment:
+      ALLOW_EMPTY_PASSWORD: 'no'
+      REDIS_EXTRA_FLAGS: '--maxmemory 500mb'
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionRedisQA-inst2
+
+  redis3:
+    image: redis:latest
+    command: redis-server /redis.conf
+    configs:
+      - source: redis3
+        target: /redis.conf
+        mode: 644
+    volumes:
+      - redis_data3:/data
+    ports:
+      - 8003:8003
+      - 18003:18003
+    environment:
+      ALLOW_EMPTY_PASSWORD: 'no'
+      REDIS_EXTRA_FLAGS: '--maxmemory 500mb'
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionRedisQA-inst3
+
+  redis4:
+    image: redis:latest
+    command: redis-server /redis.conf
+    configs:
+      - source: redis4
+        target: /redis.conf
+        mode: 644
+    volumes:
+      - redis_data4:/data
+    ports:
+      - 8004:8004
+      - 18004:18004
+    environment:
+      ALLOW_EMPTY_PASSWORD: 'no'
+      REDIS_EXTRA_FLAGS: '--maxmemory 500mb'
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionRedisQA-inst1
+
+  redis5:
+    image: redis:latest
+    command: redis-server /redis.conf
+    configs:
+      - source: redis5
+        target: /redis.conf
+        mode: 644
+    volumes:
+      - redis_data5:/data
+    ports:
+      - 8005:8005
+      - 18005:18005
+    environment:
+      ALLOW_EMPTY_PASSWORD: 'no'
+      REDIS_EXTRA_FLAGS: '--maxmemory 500mb'
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionRedisQA-inst2
+
+  redis6:
+    image: redis:latest
+    command: redis-server /redis.conf
+    configs:
+      - source: redis6
+        target: /redis.conf
+        mode: 644
+    volumes:
+      - redis_data6:/data
+    ports:
+      - 8006:8006
+      - 18006:18006
+    environment:
+      ALLOW_EMPTY_PASSWORD: 'no'
+      REDIS_EXTRA_FLAGS: '--maxmemory 500mb'
+    networks:
+      - database
+    deploy:
+      placement:
+        preferences:
+          - spread: node.labels.fusionRedisQA-inst3
+
+
+  #
+  # Serviços de utilidade geral.
+  #
+  mongoexpress:
+    image: mongo-express:latest
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_ADMINUSERNAME: "root"
+      ME_CONFIG_MONGODB_ADMINPASSWORD: "aeng4rahruGoh6yoh2ohcielieNgiZei"
+    deploy:
+      labels:
+        - "traefik.backend=usignhybridapiqa_mongoexpress"
+        - "traefik.docker.network=proxy"
+        - "traefik.frontend.rule=Host:mongoexpress.alpha.usign.io"
+        - "traefik.port=8081"
+        # Senha: oVKDX1tJ0G3b0IRQ - Crypt: $$2y$$05$$qe0JJIVXDn/NE7HV7efN.umfqiHzHoZV8G2FxN0XOJqm4cCKHP66K
+        - "traefik.frontend.auth.basic=admin:$$2y$$05$$qe0JJIVXDn/NE7HV7efN.umfqiHzHoZV8G2FxN0XOJqm4cCKHP66K"
+    networks:
+      - database
+      - proxy
+
+  adminer:
+    image: adminer
+    deploy:
+      labels:
+        - "traefik.backend=usignhybridapiqa_adminer"
+        - "traefik.docker.network=proxy"
+        - "traefik.frontend.rule=Host:adminer.alpha.usign.io"
+        - "traefik.port=8080"
+        # Senha: GNd0dhet6bPHtDk9 - Crypt: $$2y$$05$$z8wfZ8oDL1gYmNYwfecNm.pbNbQ4pE8OzrzQGb7JTMcIKqIIWSdJi
+        - "traefik.frontend.auth.basic=admin:$$2y$$05$$z8wfZ8oDL1gYmNYwfecNm.pbNbQ4pE8OzrzQGb7JTMcIKqIIWSdJi"
+    networks:
+      - database
+      - proxy
+
+
+#
+# Definições de volumes
+#
+
+volumes:
+  mongo_data1:
+    name: usignhybridapiqa_mongo
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 5
+      volumeType: gp2
+
+  mongo_data2:
+    name: fusionQA_mongo2
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 5
+      volumeType: gp2
+
+  mongo_data3:
+    name: fusionQA_mongo3
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 5
+      volumeType: gp2
+
+  mongo_data4:
+    name: fusionQA_mongo4
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 5
+      volumeType: gp2
+
+  redis_data1:
+    name: fusionQA_redis1
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 1
+      volumeType: gp2
+
+  redis_data2:
+    name: fusionQA_redis2
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 1
+      volumeType: gp2
+
+  redis_data3:
+    name: fusionQA_redis3
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 1
+      volumeType: gp2
+
+  redis_data4:
+    name: fusionQA_redis4
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 1
+      volumeType: gp2
+
+  redis_data5:
+    name: fusionQA_redis5
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 1
+      volumeType: gp2
+
+  redis_data6:
+    name: fusionQA_redis6
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 1
+      volumeType: gp2
+
+  postgres_data1:
+    name: fusionQA_postgres1
+    driver: rexray/ebs:latest
+    driver_opts:
+      size: 5
+      volumeType: gp2
+
+  api_assets:
+    name: fusion.qa.api.assets
+    driver: rexray/s3fs:latest
+
+networks:
+  database:
+  proxy:
+    external: true

@@ -1,0 +1,31 @@
+{
+    "name": "fusionstack1",
+    "version": "1.0.0",
+    "description": "Software para gerar a stack do Fusion 1.0",
+    "main": "index.js",
+    "author": "Nelio Santos (nelio.santos@jbtec.com.br)",
+    "license": "UNLICENSED",
+    "scripts": {
+        "start": "ts-node src/index.ts",
+        "build": "tsc",
+        "lint": "eslint ./src/**/*",
+        "format": "prettier --write src/**/*.ts"
+    },
+    "dependencies": {
+        "@types/node": "^12.6.9",
+        "eslint": "^6.1.0",
+        "prettier": "^1.18.2",
+        "ts-node": "^8.3.0",
+        "typescript": "^3.5.3"
+    },
+    "devDependencies": {
+        "@typescript-eslint/eslint-plugin": "^1.13.0",
+        "@typescript-eslint/parser": "^1.13.0",
+        "eslint-config-airbnb-base": "^13.2.0",
+        "eslint-config-prettier": "^6.0.0",
+        "eslint-import-resolver-typescript": "^1.1.1",
+        "eslint-plugin-import": "^2.18.2",
+        "eslint-plugin-prettier": "^3.1.0",
+        "husky": "^3.0.2"
+    }
+}

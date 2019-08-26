@@ -1,9 +1,9 @@
 {
-    "name": "fusionstack1",
+    "name": "estruturaDados",
     "version": "1.0.0",
-    "description": "Software para gerar a stack do Fusion 1.0",
+    "description": "Array multidimensional",
     "main": "index.js",
-    "author": "Nelio Santos (nelio.santos@jbtec.com.br)",
+    "author": "Matheus Paice",
     "license": "UNLICENSED",
     "scripts": {
         "start": "ts-node src/index.ts",
@@ -13,12 +13,16 @@
     },
     "dependencies": {
         "@types/node": "^12.6.9",
+        "cors": "^2.8.5",
         "eslint": "^6.1.0",
+        "express": "^4.17.1",
         "prettier": "^1.18.2",
         "ts-node": "^8.3.0",
         "typescript": "^3.5.3"
     },
     "devDependencies": {
+        "@types/cors": "^2.8.6",
+        "@types/express": "^4.17.1",
         "@typescript-eslint/eslint-plugin": "^1.13.0",
         "@typescript-eslint/parser": "^1.13.0",
         "eslint-config-airbnb-base": "^13.2.0",

@@ -1,75 +1,23 @@
-/**
- * Antes de começar:
- * yarn install
- * 
- * Como executar:
- * yarn start | less
- * 
- */
-import * as fs from 'fs';
+import express from 'express';
+import cors from 'cors';
 
-const config = {
-    stackName: 'fusionQA',
-    redis: {
-        instances: 4,
-        slaves: 3,
-        password: 'poneisSaoParaMeninas',
-        ports: {
-            start: 8001,
-        },
-    },
-    mongo: {
-        instances: 4,
-        database: 'core',
-        user: 'root',
-        password: 'queriaAndarNumAvestruz',
-    },
-    postgres: {
-        database: 'usign',
-        username: 'postgres',
-        password: 'euNuncaTiveUmUrso',
-    },
-    site: {
-        traefik: {
-            url: 'alpha.usign.io',
-        },
-    },
-    api: {
-        jwt: 'meusAnimaisNaoVoam',
-    },
-    smtp: {
-        user: 'no-reply@jbtec.com.br',
-        password: 'seVoassemSeriamPassaros',
-        host: 'smtp.gmail.com',
-        port: 465,
-    },
-};
+import bubbleSort from './bubbleSort';
+import insertionSort from './insertionSort';
+import selectionSort from './selectionSort';
+import quickSort from './quickSort';
 
-interface KeyPair {
-    key: string;
-    value: string;
-}
+const app = express();
 
-const flattenConfig = () => {
-    const data: KeyPair[] = [
-        { key: 'stackName', value: 'fusionQA' },
-        { key: 'redis.password', value: 'poneisSaoParaMeninas' }
-    ];
-    return data;
-};
+app.use(cors());
 
-const main = () => {
-    let content = fs.readFileSync('stack.yaml').toString();
-    const replaces = flattenConfig();
+app.get('/', (req, res) => {
+    const response = [{ ...bubbleSort }, { ...insertionSort }, { ...selectionSort }, { ...quickSort }];
 
-    /** Substitui todas as constantes e variaveis */
-    replaces.forEach(v => {
-        content = content
-            .replace(new RegExp(`"##!!!${v.key}!!!##"`, 'g'), v.value)
-            .replace(new RegExp(`##!!!${v.key}!!!##`, 'g'), v.value)
-            .replace(new RegExp(`!!!${v.key}!!!`, 'g'), v.value);
+    res.json({
+        response,
     });
-    console.log(content); // eslint-disable-line
-};
+});
 
-main();
+app.listen(7878, () => {
+    console.log('server online on port 7878!');
+});

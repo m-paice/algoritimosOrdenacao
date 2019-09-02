@@ -7,11 +7,11 @@ let aux1;
 
 for (let i = 0; i < vetorBubbleSort.length; i += 1) {
     for (let j = i + 1; j < vetorBubbleSort.length; j += 1) {
-        if (vetorBubbleSort[i] > vetorBubbleSort[j]) {
+        if (vetorBubbleSort[j] > vetorBubbleSort[j + 1]) {
             moves += 1;
-            aux1 = vetorBubbleSort[i];
-            vetorBubbleSort[i] = vetorBubbleSort[j];
-            vetorBubbleSort[j] = aux1;
+            aux1 = vetorBubbleSort[j];
+            vetorBubbleSort[j] = vetorBubbleSort[j + 1];
+            vetorBubbleSort[j + 1] = aux1;
         }
     }
 }
